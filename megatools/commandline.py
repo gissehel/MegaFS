@@ -173,7 +173,7 @@ class MegaCommandLineClient(object) :
         for path in sorted(root['path']) :
             node = root['files'][root['path'][path]]
             if ('filter' not in kwargs) or (kwargs['filter'].lower() in node['a']['path'].lower()) :
-                self.status("%s '%s'" % (node['h'],node['a']['path']))
+                self.status(":%s '%s'" % (node['h'],node['a']['path']))
 
     @CLRunner.command(params={
         'filter' : {
@@ -187,7 +187,24 @@ class MegaCommandLineClient(object) :
         for path in sorted(root['path']) :
             node = root['files'][root['path'][path]]
             if ('filter' not in kwargs) or (kwargs['filter'].lower() in node['a']['n'].lower()) :
-                self.status("%s %s'%s'" % (node['h'],'  '*node['a']['level'], node['a']['n']))
+                self.status(":%s %s'%s'" % (node['h'],'  '*node['a']['level'], node['a']['n']))
+    
+    def findnode(self, root, arg, isfile=False, isdir=False) :
+        if arg.startswith(':') :
+            handle = arg[1:]
+            if handle not in root['files'] :
+                self.errorexit(_('No node with handle [%s]')%(handle,))
+            node = root['files'][handle]
+        else :
+            path = arg
+            if path not in root['path'] :
+                self.errorexit(_('No node with path [%s]')%(path,))
+            node = root['files'][root['path'][path]]
+        if isfile and node['t']!=0 :
+            self.errorexit(_('Argument [%s] should be a file, but [%s] is not a file')%(arg, node['a']['n']))
+        if isdir and node['t'] not in (1,2,4) :
+            self.errorexit(_('Argument [%s] should be a folder,  but [%s] is not a folder')%(arg, node['a']['n']))
+        return node
 
     @CLRunner.command()
     def get(self, args, kwargs) :
@@ -195,16 +212,13 @@ class MegaCommandLineClient(object) :
         root = self.get_root()
         if len(args) == 0 :
             self.errorexit(_('Need a file handle to download'))
-        handle = args[0]
-        if handle not in root['files'] :
-            self.errorexit(_('No file with handle [%s]')%(handle,))
-        node = root['files'][handle]
+        node = self.findnode(root,args[0],isfile=True)
         filename = node['a']['n']
         tmp_filename = '.mega-%s-%s' % (int(time.time()*1000),filename)
         self.status(_('Getting [%s]')%(filename,))
 
         client = self.get_client()
-        client.downloadfile(node,tmp_filename)
+        client.downloadfile(node, tmp_filename)
 
         shutil.move(tmp_filename, filename)
 
@@ -216,14 +230,7 @@ class MegaCommandLineClient(object) :
         if len(args) < 2 :
             self.errorexit(_('Need a file to upload and a directory handle where to upload'))
         filename = args[0]
-        dhandle = args[1]
-        if not(os.path.exists(filename)) :
-            self.errorexit(_("File [%s] doesn't exist")%(filename,))
-        if dhandle not in root['files'] :
-            self.errorexit(_("No directory handle named [%s]")%(dhandle,))
-        node = root['files'][dhandle]
-        if node['t'] != 1 :
-            self.errorexit(_("The handle [%s] must be a directory handle. [%s] is not a directory")%(dhandle, node['a']['n'],))
+        node = self.findnode(root,args[1],isdir=True)
         
         client = self.get_client()
         dirname, basename = os.path.split(filename)
