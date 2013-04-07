@@ -3,10 +3,13 @@
 from megaclient import MegaClient
 import sys
 import os
+import time
 import json
 import yaml
 import pyaml
+import shutil
 import getpass
+import posixpath
 
 # prepare for i18n
 def _(value) :
@@ -163,7 +166,7 @@ class ConfigurableCLRunnable(CLRunnable) :
     def __init__(self, config_dirname, config_filename) :
         self.__super.__init__()
         self._configuration_dirname = os.path.expanduser(config_dirname)
-        self._configuration_filename = os.path.join(self._configuration_dirname, config_filename)
+        self._configuration_filename = config_filename
         self.load_config()
 
     def export_config(self) :
@@ -172,18 +175,34 @@ class ConfigurableCLRunnable(CLRunnable) :
     def import_config(self,config) :
         pass
 
-    def save_config(self) :
+    def save_stream(self, name, stream) :
         if not(os.path.exists(self._configuration_dirname)) :
             os.makedirs(self._configuration_dirname,mode=0700);
-        config = self.export_config()
-        with open(self._configuration_filename,'wb') as handle :
-            json.dump(config,handle,indent=2)
+        filename = os.path.join(self._configuration_dirname, name)
+        with open(filename,'wb') as handle :
+            json.dump(stream,handle,indent=2)
+
+    def load_stream(self,name) :
+        filename = os.path.join(self._configuration_dirname, name)
+        if os.path.exists(filename) :
+            with open(filename,'rb') as handle :
+                stream = json.load(handle)
+            return stream
+        return None
+
+    def del_stream(self,name) :
+        filename = os.path.join(self._configuration_dirname, name)
+        if os.path.exists(filename) :
+            os.unlink(filename)
+
+    def save_config(self) :
+        self.save_stream(self._configuration_filename, self.export_config())
 
     def load_config(self) :
-        if os.path.exists(self._configuration_filename) :
-            with open(self._configuration_filename,'rb') as handle :
-                config = json.load(handle)
+        config = self.load_stream(self._configuration_filename)
+        if config != None :
             self.import_config(config)
+
     def run(self, args) :
         try :
             return self.__super.run(args)
@@ -305,6 +324,8 @@ class MegaCommandLineClient(object) :
         self._client = None
         self._seqno = None
 
+        self._root = None
+
     def export_config(self) :
         if self._client is not None :
             self._seqno = self._client.seqno
@@ -385,17 +406,105 @@ class MegaCommandLineClient(object) :
             self._sid = ''
             self._seqno = None
             self.save_config()
+            self._root = None
+            self.del_stream('root')
         self.status('logged out')
 
-    @CLRunner.command()
-    def ls(self, args, kwargs) :
-        """list files on mega"""
-        #self.login([],{})
+    def get_root(self) :
+        if self._root is not None :
+            return self._root
         client = self.get_client()
         files = client.getfiles()
+        root = {}
+        root['files'] = files
+        root['tree'] = {}
+        root['path'] = {}
+        treeitems = {}
+        for handle in files :
+            file = files[handle]
+            if handle not in treeitems :
+                treeitems[handle] = {}
+                treeitems[handle]['h'] = handle
+            treeitem = treeitems[handle]
+            if 'p' in file and file['p'] in files :
+                phandle = file['p']
+                if phandle not in treeitems :
+                    treeitems[phandle] = {}
+                    treeitems[phandle]['h'] = phandle
+                ptreeitem = treeitems[phandle]
+                if 'children' not in ptreeitem :
+                    ptreeitem['children'] = {}
+                ptreeitem['children'][handle] = treeitem
+            else :
+                root['tree'][handle] = treeitem
+        def updatepath(dictchildren, parentpath, level) :
+            for treeitem in dictchildren.values() :
+                node = files[treeitem['h']]
+                if not(node['a']) :
+                    node['a'] = { 'n' : '?(%s)' % (node['h'],) }
+                node['a']['path'] = posixpath.join(parentpath,node['a']['n'])
+                node['a']['level'] = level
+                root['path'][ node['a']['path'] ] = node['h']
+                if 'children' in treeitem :
+                    updatepath(treeitem['children'],node['a']['path'],level+1)
+        updatepath(root['tree'],'/',0)
+        self.save_stream('root',root)
+        self._root = root
+        return self._root
 
-        print pyaml.dump(files,sys.stdout)
-        print len(files)
+    @CLRunner.command(params={
+        'filter' : {
+            'need_value' : True,
+            'aliases' : ['f'],
+            },
+        })
+    def find(self, args, kwargs) :
+        """list files on mega"""
+        root = self.get_root()
+        for path in sorted(root['path']) :
+            node = root['files'][root['path'][path]]
+            if ('filter' not in kwargs) or (kwargs['filter'].lower() in node['a']['path'].lower()) :
+                self.status("%s '%s'" % (node['h'],node['a']['path']))
+
+    @CLRunner.command(params={
+        'filter' : {
+            'need_value' : True,
+            'aliases' : ['f'],
+            },
+        })
+    def show(self, args, kwargs) :
+        """list files on mega"""
+        root = self.get_root()
+        for path in sorted(root['path']) :
+            node = root['files'][root['path'][path]]
+            if ('filter' not in kwargs) or (kwargs['filter'].lower() in node['a']['n'].lower()) :
+                self.status("%s %s'%s'" % (node['h'],'  '*node['a']['level'], node['a']['n']))
+
+    @CLRunner.command()
+    def get(self, args, kwargs) :
+        """get a file"""
+        root = self.get_root()
+        if len(args) == 0 :
+            self.errorexit(_('Need a file handle to download'))
+        handle = args[0]
+        if handle not in root['files'] :
+            self.errorexit(_('No file with handle [%s]')%(handle,))
+        node = root['files'][handle]
+        filename = node['a']['n']
+        tmp_filename = '.mega-%s-%s' % (int(time.time()*1000),filename)
+        self.status(_('Getting [%s]')%(filename,))
+        self._client.downloadfile(node,tmp_filename)
+
+        shutil.move(tmp_filename, filename)
+
+        
+    @CLRunner.command()
+    def reload(self, args, kwargs) :
+        """reload the filesystem"""
+        self._root = None
+        self.del_stream('root')
+        self.get_root()
+
 
 if __name__ == '__main__' :
     megaclparser = MegaCommandLineClient()
