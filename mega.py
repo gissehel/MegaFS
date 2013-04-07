@@ -493,11 +493,34 @@ class MegaCommandLineClient(object) :
         filename = node['a']['n']
         tmp_filename = '.mega-%s-%s' % (int(time.time()*1000),filename)
         self.status(_('Getting [%s]')%(filename,))
-        self._client.downloadfile(node,tmp_filename)
+
+        client = self.get_client()
+        client.downloadfile(node,tmp_filename)
 
         shutil.move(tmp_filename, filename)
 
+
+    @CLRunner.command()
+    def put(self, args, kwargs) :
+        """put a file"""
+        root = self.get_root()
+        if len(args) < 2 :
+            self.errorexit(_('Need a file to upload and a directory handle where to upload'))
+        filename = args[0]
+        dhandle = args[1]
+        if not(os.path.exists(filename)) :
+            self.errorexit(_("File [%s] doesn't exist")%(filename,))
+        if dhandle not in root['files'] :
+            self.errorexit(_("No directory handle named [%s]")%(dhandle,))
+        node = root['files'][dhandle]
+        if node['t'] != 1 :
+            self.errorexit(_("The handle [%s] must be a directory handle. [%s] is not a directory")%(dhandle, node['a']['n'],))
         
+        client = self.get_client()
+        dirname, basename = os.path.split(filename)
+        client.uploadfile(filename, node['h'], basename)
+
+
     @CLRunner.command()
     def reload(self, args, kwargs) :
         """reload the filesystem"""
