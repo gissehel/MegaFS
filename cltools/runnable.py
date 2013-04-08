@@ -21,10 +21,10 @@ class CLRunnable(object) :
         self._tool_name = None
         
     def status(self, message) :
-        sys.stdout.write('%s\n' % (message,))
+        sys.stdout.write((u'%s\n' % (message,)).encode('utf-8'))
 
     def error(self, message) :
-        sys.stderr.write(_("Error : %s\n") % (message,))
+        sys.stderr.write((_(u"Error : %s\n") % (message,)).encode('utf-8'))
 
 
     def errorexit(self, message) :
