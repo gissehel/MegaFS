@@ -215,12 +215,16 @@ class MegaCommandLineClient(object) :
         node = self.findnode(root,args[0],isfile=True)
         filename = node['a']['n']
         tmp_filename = '.mega-%s-%s' % (int(time.time()*1000),filename)
-        self.status(_('Getting [%s]')%(filename,))
-
+        size = node['s']
+        self.status(_('Getting [%s] (%s bytes)')%(filename,size))
+        
         client = self.get_client()
+        start_time = time.time()
         client.downloadfile(node, tmp_filename)
-
         shutil.move(tmp_filename, filename)
+        stop_time = time.time()
+        self.status(_('Transfert completed in %s seconds (%s KiB/s)')%(int((stop_time-start_time)*10)/10., int((size*100)/(1024*(stop_time-start_time)))/100. ))
+
 
 
     @CLRunner.command()
@@ -230,11 +234,19 @@ class MegaCommandLineClient(object) :
         if len(args) < 2 :
             self.errorexit(_('Need a file to upload and a directory handle where to upload'))
         filename = args[0]
+        if not(os.path.exists(filename)) :
+            self.errorexit(_("File [%s] doesn't exists") % (filename,))
         node = self.findnode(root,args[1],isdir=True)
         
         client = self.get_client()
         dirname, basename = os.path.split(filename)
+        size = os.stat(filename).st_size
+        self.status(_('Sending [%s] (%s bytes)')%(filename,size))
+        start_time = time.time()
         client.uploadfile(filename, node['h'], basename)
+        stop_time = time.time()
+        self.status(_('Transfert completed in %s seconds (%s KiB/s)')%(int((stop_time-start_time)*10)/10., int((size*100)/(1024*(stop_time-start_time)))/100. ))
+
 
 
     @CLRunner.command()
