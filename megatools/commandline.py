@@ -4,7 +4,6 @@ from megaclient import MegaClient
 import sys
 import os
 import time
-import json
 import yaml
 import pyaml
 import shutil

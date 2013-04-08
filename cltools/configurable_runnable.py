@@ -1,14 +1,7 @@
 #!/usr/bin/env python
 
-import sys
 import os
-import time
 import json
-import yaml
-import pyaml
-import shutil
-import getpass
-import posixpath
 
 from supertools import superable
 # from cltools.i18n import _

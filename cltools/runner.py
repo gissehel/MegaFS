@@ -1,14 +1,9 @@
 #!/usr/bin/env python
 
-import sys
-import os
 import time
 import json
 import yaml
-import pyaml
-import shutil
-import getpass
-import posixpath
+# import pyaml
 
 from cltools.runnable import CLRunnable
 
