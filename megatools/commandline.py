@@ -122,6 +122,8 @@ class MegaCommandLineClient(object) :
         if self._root is not None :
             return self._root
         client = self.get_client()
+        if client is None :
+            self.errorexit(_('You must login first'))
         files = client.getfiles()
         root = {}
         root['files'] = files
