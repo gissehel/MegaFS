@@ -150,7 +150,7 @@ class MegaCommandLineClient(object) :
         def updatepath(dictchildren, parentpath, level) :
             for treeitem in dictchildren.values() :
                 node = files[treeitem['h']]
-                if not(node['a']) :
+                if not(node['a']) or type(node['a']) in (str,unicode) :
                     node['a'] = { 'n' : '?(%s)' % (node['h'],) }
                 node['a']['path'] = posixpath.join(parentpath,node['a']['n'])
                 node['a']['level'] = level
